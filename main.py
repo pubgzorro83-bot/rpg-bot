@@ -30,6 +30,7 @@ def send_response(cid, text, name=None):
     if name:
         text = f"👤 **{name}**, {text}"
     
+    # Никаких клавиатур и кнопок! Только чистый текст.
     payload = {"chat_id": cid, "text": text, "parse_mode": "Markdown"}
 
     try:
@@ -37,7 +38,7 @@ def send_response(cid, text, name=None):
     except Exception as e:
         print("Ошибка отправки:", e)
 
-print("RPG-бот запущен (Строго без кнопок, хардкор)!")
+print("RPG-бот запущен: строгий хардкор без кнопок!")
 offset = None
 
 while True:
@@ -59,17 +60,17 @@ while True:
                         txt = txt.split("@")[0]
 
                     if txt in ["/start", "старт"]:
-                        send_response(cid, "Привет! Это Хардкорная RPG. Управления кнопками больше нет. Используй команды: /farm, /mine, /dungeon, /profile, /top, /shop, /eat", name)
+                        send_response(cid, "Добро пожаловать в Хардкорную RPG! Кнопок нет. Команды: /farm, /mine, /dungeon, /profile, /top, /shop, /eat", name)
                     
                     elif txt in ["/help", "/помощь", "помощь"]:
                         send_response(cid, 
                             "📜 **Справочник команд:**\n\n"
-                            "🌾 `/farm` — Фарм золота (раз в 1 минуту).\n"
-                            "⛏ `/mine` — Опасная шахта (урон по HP, много золота).\n"
+                            "🌾 `/farm` — Фарм золота (раз в минуту).\n"
+                            "⛏ `/mine` — Опасная шахта (наносит урон по HP, дает много золота).\n"
                             "⚔️ `/dungeon` — Рейд на монстров.\n"
-                            "🏆 `/top` — Топ богачей.\n"
-                            "🛒 `/shop` — Магазин (высокие цены).\n"
-                            "🍙 `/eat` — Поесть и восстановить HP.\n"
+                            "🏆 `/top` — Топ игроков.\n"
+                            "🛒 `/shop` — Магазин с высокими ценами.\n"
+                            "🍙 `/eat` — Восстановить HP за счет онигири.\n"
                             "👤 `/profile` — Твоя статистика.", name
                         )
                     
@@ -88,7 +89,7 @@ while True:
                     
                     elif txt in ["/shop", "магазин"]:
                         send_response(cid, 
-                            "🛒 **Хардкорная лавка торговца:**\n"
+                            "🛒 **Хардкорный магазин:**\n"
                             "• `/buy onigiri` — Онигири (500 монет)\n"
                             "• `/buy potion` — Зелье здоровья (3000 монет)\n"
                             "• `/buy sword` — Стальной меч (6000 монет)\n"
@@ -99,42 +100,42 @@ while True:
                         current_time = time.time()
                         if uid in last_farm_time and current_time - last_farm_time[uid] < 60:
                             left = int(60 - (current_time - last_farm_time[uid]))
-                            send_response(cid, f"⏳ Отдохни! На фарм можно ходить раз в минуту. Осталось: {left} сек.", name)
+                            send_response(cid, f"⏳ Рано! Отдохни еще {left} сек.", name)
                         else:
                             last_farm_time[uid] = current_time
-                            g = random.randint(10, 25)
+                            g = random.randint(10, 20)
                             p['gold'] += g
-                            send_response(cid, f"🌾 Фарм завершен. Получено: **+{g}** золота. Всего: {p['gold']}", name)
+                            send_response(cid, f"🌾 Фарм на полях. Получено: **+{g}** золота. Всего: {p['gold']}", name)
 
                     elif txt in ["/mine", "шахта"]:
                         current_time = time.time()
                         if uid in last_mine_time and current_time - last_mine_time[uid] < 90:
                             left = int(90 - (current_time - last_mine_time[uid]))
-                            send_response(cid, f"⏳ Шахта осыпается, подожди еще {left} сек.", name)
+                            send_response(cid, f"⏳ Шахта нестабильна, подожди еще {left} сек.", name)
                         else:
                             last_mine_time[uid] = current_time
-                            damage = random.randint(20, 45) # Опасный урон
+                            damage = random.randint(25, 50) # Опасный урон по здоровью
                             p['hp'] -= damage
-                            if random.random() < 0.35: # Шанс сокровища
-                                gold = random.randint(200, 500)
+                            if random.random() < 0.35:
+                                gold = random.randint(250, 600)
                                 p['gold'] += gold
-                                send_response(cid, f"⛏ Опасный спуск в шахту! Обвал нанес тебе **{damage} урона**, но ты откопал жилу золота: **+{gold}**! (HP: {max(0, p['hp'])}/{p['max_hp']})", name)
+                                send_response(cid, f"⛏ Опасная шахта! Обвал нанес тебе **{damage} урона**, но ты сорвал куш и нашел золото: **+{gold}**! (HP: {max(0, p['hp'])}/{p['max_hp']})", name)
                             else:
-                                send_response(cid, f"💥 Страшный обвал в шахте! Ты получил **{damage} урона** и едва унес ноги без добычи. (HP: {max(0, p['hp'])}/{p['max_hp']})", name)
+                                send_response(cid, f"💥 Страшный обвал! Ты получил **{damage} урона** и сбежал из шахты ни с чем. (HP: {max(0, p['hp'])}/{p['max_hp']})", name)
 
                     elif txt in ["/dungeon", "данж"]:
                         if p['hp'] <= 50:
-                            send_response(cid, "⚠️ Слишком опасно! Твое HP меньше или равно 50, сначала подлечись.", name)
+                            send_response(cid, "⚠️ Слишком опасно! Твое HP <= 50, сначала подлечись.", name)
                         else:
                             dmg = random.randint(35, 60)
                             loot = random.randint(200, 450)
                             p['hp'] -= dmg
                             p['gold'] += loot
-                            send_response(cid, f"⚔️ Рейд в данж завершен!\n💰 Добыча: **+{loot}** золота\n🩸 Получено урона: {dmg} (Осталось HP: {max(0, p['hp'])}/{p['max_hp']})", name)
+                            send_response(cid, f"⚔️ Данж зачищен!\n💰 Найдено: **+{loot}** золота\n🩸 Урон: {dmg} (Осталось HP: {max(0, p['hp'])}/{p['max_hp']})", name)
 
                     elif txt in ["/eat", "поесть"]:
                         if p['hp'] >= p['max_hp']:
-                            send_response(cid, "⚠️ Твое здоровье и так полное!", name)
+                            send_response(cid, "⚠️ Здоровье и так полное!", name)
                         elif p['onigiri'] > 0:
                             p['onigiri'] -= 1
                             p['hp'] = min(p['max_hp'], p['hp'] + 40)
