@@ -12,21 +12,32 @@ last_mine_time = {}
 def get_p(uid, name):
     if uid not in players:
         players[uid] = {
-            "name": name, "gold": 100, "onigiri": 1, "hp": 100, "max_hp": 100,
-            "lvl": 1, "xp": 0, "weapon": "Ржавый меч", "armor": "Тканевая одежда"
+            "name": name, 
+            "gold": 100, 
+            "onigiri": 1, 
+            "hp": 100, 
+            "max_hp": 100,
+            "lvl": 1,
+            "xp": 0,
+            "weapon": "Ржавый меч",
+            "armor": "Тканевая одежда"
         }
     else:
         players[uid]["name"] = name
     return players[uid]
 
-def send_response(cid, text, name):
-    text = f"👤 **{name}**, {text}"
-    try:
-        requests.post(BASE_URL + "sendMessage", json={"chat_id": cid, "text": text, "parse_mode": "Markdown"}, timeout=10)
-    except Exception as e:
-        print("Ошибка:", e)
+def send_response(cid, text, name=None):
+    if name:
+        text = f"👤 **{name}**, {text}"
+    
+    payload = {"chat_id": cid, "text": text, "parse_mode": "Markdown"}
 
-print("RPG-бот запущен (Хардкорный режим)!")
+    try:
+        requests.post(BASE_URL + "sendMessage", json=payload, timeout=10)
+    except Exception as e:
+        print("Ошибка отправки:", e)
+
+print("RPG-бот запущен (Хардкорный режим без кнопок)!")
 offset = None
 
 while True:
@@ -35,6 +46,7 @@ while True:
         if r.get("result"):
             for u in r["result"]:
                 offset = u["update_id"] + 1
+                
                 if "message" in u and "text" in u["message"]:
                     msg = u["message"]
                     cid = msg["chat"]["id"]
@@ -43,67 +55,127 @@ while True:
                     name = msg["from"].get("first_name", "Игрок")
                     p = get_p(uid, name)
 
+                    if "@" in txt:
+                        txt = txt.split("@")[0]
+
                     if txt in ["/start", "старт"]:
-                        send_response(cid, "Добро пожаловать в Хардкорную RPG! Везде опасно. Команды: фарм, шахта, данж, профиль, топ, магазин, поесть.", name)
+                        send_response(cid, "Привет! Добро пожаловать в Хардкорную RPG. Кнопок больше нет, всё через команды: фарм, шахта, данж, профиль, топ, магазин, поесть.", name)
                     
-                    elif txt in ["фарм"]:
+                    elif txt in ["/help", "/помощь", "помощь"]:
+                        send_response(cid, 
+                            "📜 **Справочник команд:**\n\n"
+                            "🌾 `фарм` — Добыча золота (раз в 1 минуту).\n"
+                            "⛏ `шахта` — Опасная добыча богатств (урон по HP).\n"
+                            "⚔️ `данж` — Рейд на монстров.\n"
+                            "🏆 `топ` — Рейтинг богатейших игроков.\n"
+                            "🛒 `магазин` — Список товаров.\n"
+                            "🍙 `поесть` — Восстановить HP.\n"
+                            "👤 `профиль` — Твоя статистика.", name
+                        )
+                    
+                    elif txt in ["/profile", "профиль"]:
+                        send_response(cid, f"Твоя статистика:\n⭐ Уровень: {p['lvl']} (XP: {p['xp']}/{p['lvl'] * 100})\n❤️ Здоровье: {p['hp']}/{p['max_hp']}\n⚔️ Оружие: {p['weapon']}\n🛡 Броня: {p['armor']}\n💰 Золото: {p['gold']}\n🍙 Онигири: {p['onigiri']}", name)
+                    
+                    elif txt in ["/top", "топ"]:
+                        if not players:
+                            send_response(cid, "🏆 Список лидеров пуст!", name)
+                        else:
+                            sorted_players = sorted(players.values(), key=lambda x: x['gold'], reverse=True)
+                            top_text = "🏆 **Таблица лидеров (Топ богачей):**\n\n"
+                            for i, pl in enumerate(sorted_players[:5], 1):
+                                top_text += f"{i}. **{pl['name']}** — 💰 {pl['gold']} монет (Ур. {pl['lvl']})\n"
+                            send_response(cid, top_text, name)
+                    
+                    elif txt in ["/shop", "магазин"]:
+                        send_response(cid, 
+                            "🛒 **Хардкорная лавка торговца:**\n"
+                            "• `/buy onigiri` — Онигири (500 монет)\n"
+                            "• `/buy potion` — Зелье здоровья (2500 монет)\n"
+                            "• `/buy sword` — Стальной меч (5000 монет)\n"
+                            "• `/buy armor` — Тяжелые доспехи (10000 монет)", name
+                        )
+                    
+                    elif txt in ["/farm", "фарм"]:
                         current_time = time.time()
                         if uid in last_farm_time and current_time - last_farm_time[uid] < 60:
-                            send_response(cid, "Ты слишком устал, подожди минуту.", name)
+                            left = int(60 - (current_time - last_farm_time[uid]))
+                            send_response(cid, f"⏳ Отдохни! На фарм можно ходить раз в минуту. Осталось: {left} сек.", name)
                         else:
                             last_farm_time[uid] = current_time
-                            g = random.randint(10, 30) # Урезали доход
+                            g = random.randint(10, 30)
                             p['gold'] += g
-                            send_response(cid, f"Ты поработал на полях. Получено: {g} золота.", name)
+                            send_response(cid, f"🌾 Ты поработал на полях. Получено: **+{g}** золота. Всего: {p['gold']}", name)
 
-                    elif txt in ["шахта"]:
+                    elif txt in ["/mine", "шахта"]:
                         current_time = time.time()
                         if uid in last_mine_time and current_time - last_mine_time[uid] < 120:
-                            send_response(cid, "Шахта нестабильна, подожди 2 минуты.", name)
+                            left = int(120 - (current_time - last_mine_time[uid]))
+                            send_response(cid, f"⏳ Шахта нестабильна, подожди еще {left} сек.", name)
                         else:
                             last_mine_time[uid] = current_time
-                            damage = random.randint(10, 20)
+                            damage = random.randint(15, 35)
                             p['hp'] -= damage
-                            if random.random() < 0.3: # Шанс успеха
-                                gold = random.randint(100, 250)
+                            if random.random() < 0.4:
+                                gold = random.randint(150, 350)
                                 p['gold'] += gold
-                                send_response(cid, f"В шахте опасно! Ты получил {damage} урона, но нашел {gold} золота!", name)
+                                send_response(cid, f"⛏ Опасный спуск! Ты получил **{damage} урона**, но нашел жилу с золотом: **+{gold}**! (HP: {max(0, p['hp'])}/{p['max_hp']})", name)
                             else:
-                                send_response(cid, f"Обвал! Ты получил {damage} урона и ничего не нашел.", name)
+                                send_response(cid, f"💥 Обвал в шахте! Ты получил **{damage} урона** и ничего не нашел. (HP: {max(0, p['hp'])}/{p['max_hp']})", name)
 
-                    elif txt in ["данж"]:
+                    elif txt in ["/dungeon", "данж"]:
                         if p['hp'] <= 40:
-                            send_response(cid, "Слишком опасно, HP меньше 40!", name)
+                            send_response(cid, "⚠️ Слишком опасно! Твое HP меньше 40, сначала подлечись.", name)
                         else:
-                            p['hp'] -= random.randint(30, 50)
+                            dmg = random.randint(30, 50)
                             loot = random.randint(150, 400)
+                            p['hp'] -= dmg
                             p['gold'] += loot
-                            send_response(cid, f"Ты выжил в данже! Получено: {loot} золота.", name)
+                            send_response(cid, f"⚔️ Ты выжил в суровом данже!\n💰 Найдено золота: **+{loot}**\n🩸 Потеряно HP: {dmg} (Осталось: {max(0, p['hp'])}/{p['max_hp']})", name)
 
-                    elif txt in ["магазин"]:
-                        send_response(cid, "Цены: 🍙 Онигири(500), 🧪 Зелье(2500), ⚔️ Меч(5000), 🛡 Броня(10000). Используй '/buy [предмет]'.", name)
-
-                    elif txt.startswith("/buy "):
-                        item = txt.split("/buy ")[1]
-                        if item == "онигири" and p['gold'] >= 500:
-                            p['gold'] -= 500; p['onigiri'] += 1; send_response(cid, "Куплен Онигири.", name)
-                        elif item == "зелье" and p['gold'] >= 2500:
-                            p['gold'] -= 2500; p['hp'] = p['max_hp']; send_response(cid, "Зелье выпито, HP полно.", name)
-                        elif item == "меч" and p['gold'] >= 5000:
-                            p['gold'] -= 5000; p['weapon'] = "Стальной меч"; send_response(cid, "Меч куплен.", name)
-                        elif item == "броня" and p['gold'] >= 10000:
-                            p['gold'] -= 10000; p['max_hp'] += 100; p['hp'] += 100; send_response(cid, "Броня куплена.", name)
+                    elif txt in ["поесть", "eat"]:
+                        if p['hp'] >= p['max_hp']:
+                            send_response(cid, "⚠️ Здоровье и так полное!", name)
+                        elif p['onigiri'] > 0:
+                            p['onigiri'] -= 1
+                            p['hp'] = min(p['max_hp'], p['hp'] + 50)
+                            send_response(cid, f"🍙 Ты съел Онигири (+50 HP). Здоровье: {p['hp']}/{p['max_hp']}.", name)
                         else:
-                            send_response(cid, "Не хватает золота или неверное название!", name)
-
-                    elif txt in ["поесть"]:
-                        if p['onigiri'] > 0:
-                            p['onigiri'] -= 1; p['hp'] = min(p['max_hp'], p['hp'] + 50); send_response(cid, "Ты съел Онигири (+50 HP).", name)
-                        else:
-                            send_response(cid, "Нет еды!", name)
+                            send_response(cid, "❌ У тебя нет еды (Онигири)!", name)
                     
-                    elif txt in ["профиль"]:
-                        send_response(cid, f"Ур: {p['lvl']}, HP: {p['hp']}/{p['max_hp']}, Золото: {p['gold']}, Еда: {p['onigiri']}", name)
+                    elif txt == "/buy onigiri":
+                        if p['gold'] >= 500:
+                            p['gold'] -= 500
+                            p['onigiri'] += 1
+                            send_response(cid, "✅ Куплен 1 Онигири за 500 монет.", name)
+                        else:
+                            send_response(cid, "❌ Не хватает золота! Нужно 500 монет.", name)
+                    
+                    elif txt == "/buy potion":
+                        if p['gold'] >= 2500:
+                            p['gold'] -= 2500
+                            p['hp'] = p['max_hp']
+                            send_response(cid, "✅ Зелье за 2500 монет выпито, HP полностью восстановлено!", name)
+                        else:
+                            send_response(cid, "❌ Не хватает золота! Нужно 2500 монет.", name)
+                    
+                    elif txt == "/buy sword":
+                        if p['gold'] >= 5000:
+                            p['gold'] -= 5000
+                            p['weapon'] = "Стальной меч"
+                            send_response(cid, "✅ Куплен Стальной меч за 5000 монет!", name)
+                        else:
+                            send_response(cid, "❌ Не хватает золота! Нужно 5000 монет.", name)
+                    
+                    elif txt == "/buy armor":
+                        if p['gold'] >= 10000:
+                            p['gold'] -= 10000
+                            p['armor'] = "Тяжелая броня"
+                            p['max_hp'] += 100
+                            p['hp'] += 100
+                            send_response(cid, "✅ Куплена Тяжелая броня за 10000 монет! Макс. HP увеличено на +100.", name)
+                        else:
+                            send_response(cid, "❌ Не хватает золота! Нужно 10000 монет.", name)
+
     except Exception as e:
-        print("Ошибка:", e)
+        print("Ошибка в цикле:", e)
         time.sleep(2)
