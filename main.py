@@ -1,21 +1,26 @@
-import time
-import requests
+import telebot
 import random
+import time
 
 TOKEN = "8845697358:AAGHC80gXtHoQbFvu6bkxPtF9zVAN_pVKsc"
-BASE_URL = f"https://api.telegram.org/bot{TOKEN}/"
+bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
 
 players = {}
 last_farm_time = {}
 last_mine_time = {}
 
-def get_p(uid, name):
+def get_p(user):
+    uid = user.id
+    name = user.first_name or "Игрок"
+    username = user.username or ""
+    
     if uid not in players:
         players[uid] = {
-            "name": name, 
-            "gold": 100, 
-            "onigiri": 1, 
-            "hp": 100, 
+            "name": name,
+            "username": username,
+            "gold": 100,
+            "onigiri": 1,
+            "hp": 100,
             "max_hp": 100,
             "lvl": 1,
             "xp": 0,
@@ -24,159 +29,157 @@ def get_p(uid, name):
         }
     else:
         players[uid]["name"] = name
+        players[uid]["username"] = username
     return players[uid]
 
-def send_response(cid, text, name=None):
-    if name:
-        text = f"👤 **{name}**, {text}"
+def get_markup(shop=False):
+    markup = telebot.types.InlineKeyboardMarkup()
+    if shop:
+        markup.row(
+            telebot.types.InlineKeyboardButton("🍙 Онигири (500г)", callback_data="buy_onigiri"),
+            telebot.types.InlineKeyboardButton("🧪 Зелье (3000г)", callback_data="buy_potion")
+        )
+        markup.row(
+            telebot.types.InlineKeyboardButton("⚔️ Меч (6000г)", callback_data="buy_sword"),
+            telebot.types.InlineKeyboardButton("🛡 Броня (12000г)", callback_data="buy_armor")
+        )
+        markup.row(telebot.types.InlineKeyboardButton("🔙 В главное меню", callback_data="menu"))
+    else:
+        markup.row(
+            telebot.types.InlineKeyboardButton("🌾 Фарм", callback_data="farm"),
+            telebot.types.InlineKeyboardButton("⛏ Шахта", callback_data="mine")
+        )
+        markup.row(
+            telebot.types.InlineKeyboardButton("⚔️ Данж", callback_data="dungeon"),
+            telebot.types.InlineKeyboardButton("🛒 Магазин", callback_data="shop")
+        )
+        markup.row(
+            telebot.types.InlineKeyboardButton("👤 Профиль", callback_data="profile"),
+            telebot.types.InlineKeyboardButton("🏆 Топ", callback_data="top")
+        )
+        markup.row(
+            telebot.types.InlineKeyboardButton("🍙 Поесть", callback_data="eat"),
+            telebot.types.InlineKeyboardButton("❓ Помощь", callback_data="help")
+        )
+    return markup
+
+def send_main(call_or_message, text, shop=False):
+    user = call_or_message.from_user
+    tag = f"👤 **@{user.username}**" if user.username else f"👤 **{user.first_name}**"
+    full_text = f"{tag}, {text}"
     
-    # Никаких клавиатур и кнопок! Только чистый текст.
-    payload = {"chat_id": cid, "text": text, "parse_mode": "Markdown"}
+    chat_id = call_or_message.message.chat.id if hasattr(call_or_message, "message") else call_or_message.chat.id
+    bot.send_message(chat_id, full_text, reply_markup=get_markup(shop))
+
+@bot.message_handler(commands=['start', 'menu'])
+def start_cmd(message):
+    get_p(message.from_user)
+    send_main(message, "Добро пожаловать в Хардкорную RPG! Выбирай действие кнопками ниже:")
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    user = call.from_user
+    uid = user.id
+    p = get_p(user)
+    data = call.data
+    cid = call.message.chat.id
 
     try:
-        requests.post(BASE_URL + "sendMessage", json=payload, timeout=10)
-    except Exception as e:
-        print("Ошибка отправки:", e)
+        bot.answer_callback_query(call.id)
+    except:
+        pass
 
-print("RPG-бот запущен: строгий хардкор без кнопок!")
-offset = None
+    if data == "menu":
+        send_main(call, "Главное меню:")
+    elif data == "help":
+        send_main(call, "📜 **Справочник:**\n\n🌾 **Фарм** — Золото.\n⛏ **Шахта** — Риск/награда.\n⚔️ **Данж** — Монстры.\n🛒 **Магазин** — Экипировка.\n🍙 **Поесть** — Хиллим HP.")
+    elif data == "profile":
+        send_main(call, f"Твоя статистика:\n⭐ Уровень: {p['lvl']}\n❤️ Здоровье: {p['hp']}/{p['max_hp']}\n⚔️ Оружие: {p['weapon']}\n🛡 Броня: {p['armor']}\n💰 Золото: {p['gold']}\n🍙 Онигири: {p['onigiri']}")
+    elif data == "top":
+        if not players:
+            send_main(call, "🏆 Список лидеров пуст!")
+        else:
+            sorted_players = sorted(players.values(), key=lambda x: x['gold'], reverse=True)
+            top_text = "🏆 **Таблица лидеров:**\n\n"
+            for i, pl in enumerate(sorted_players[:5], 1):
+                u_tag = f"@{pl['username']}" if pl['username'] else pl['name']
+                top_text += f"{i}. **{u_tag}** — 💰 {pl['gold']} (Ур. {pl['lvl']})\n"
+            send_main(call, top_text)
+    elif data == "shop":
+        send_main(call, f"🛒 **Магазин:**\nУ тебя: 💰 {p['gold']} монет", shop=True)
+    elif data == "buy_onigiri":
+        if p['gold'] >= 500:
+            p['gold'] -= 500
+            p['onigiri'] += 1
+            send_main(call, f"✅ Куплен Онигири! Золота: 💰 {p['gold']}", shop=True)
+        else:
+            send_main(call, f"❌ Не хватает золота! Нужно 500, а у тебя {p['gold']}.", shop=True)
+    elif data == "buy_potion":
+        if p['gold'] >= 3000:
+            p['gold'] -= 3000
+            p['hp'] = p['max_hp']
+            send_main(call, f"✅ Зелье выпито! Золота: 💰 {p['gold']}", shop=True)
+        else:
+            send_main(call, f"❌ Не хватает золота! Нужно 3000, а у тебя {p['gold']}.", shop=True)
+    elif data == "buy_sword":
+        if p['gold'] >= 6000:
+            p['gold'] -= 6000
+            p['weapon'] = "Стальной меч"
+            send_main(call, f"✅ Куплен Стальной меч! Золота: 💰 {p['gold']}", shop=True)
+        else:
+            send_main(call, f"❌ Не хватает золота! Нужно 6000, а у тебя {p['gold']}.", shop=True)
+    elif data == "buy_armor":
+        if p['gold'] >= 12000:
+            p['gold'] -= 12000
+            p['armor'] = "Тяжелая броня"
+            p['max_hp'] += 100
+            p['hp'] += 100
+            send_main(call, f"✅ Куплена Тяжелая броня! Золота: 💰 {p['gold']}", shop=True)
+        else:
+            send_main(call, f"❌ Не хватает золота! Нужно 12000, а у тебя {p['gold']}.", shop=True)
+    elif data == "farm":
+        now = time.time()
+        if uid in last_farm_time and now - last_farm_time[uid] < 60:
+            left = int(60 - (now - last_farm_time[uid]))
+            send_main(call, f"⏳ Отдохни еще {left} сек.")
+        else:
+            last_farm_time[uid] = now
+            g = random.randint(10, 20)
+            p['gold'] += g
+            send_main(call, f"🌾 Получено **+{g}** золота. Всего: {p['gold']}")
+    elif data == "mine":
+        now = time.time()
+        if uid in last_mine_time and now - last_mine_time[uid] < 90:
+            left = int(90 - (now - last_mine_time[uid]))
+            send_main(call, f"⏳ Подожди еще {left} сек.")
+        else:
+            last_mine_time[uid] = now
+            damage = random.randint(25, 50)
+            p['hp'] -= damage
+            if random.random() < 0.35:
+                gold = random.randint(250, 600)
+                p['gold'] += gold
+                send_main(call, f"⛏ Обвал (-{damage} HP), но нашел золото: **+{gold}**! (HP: {max(0, p['hp'])}/{p['max_hp']})")
+            else:
+                send_main(call, f"💥 Обвал! Урон: **{damage}** (HP: {max(0, p['hp'])}/{p['max_hp']})")
+    elif data == "dungeon":
+        if p['hp'] <= 50:
+            send_main(call, "⚠️ Слишком опасно! HP <= 50, подлечись.")
+        else:
+            dmg = random.randint(35, 60)
+            loot = random.randint(200, 450)
+            p['hp'] -= dmg
+            p['gold'] += loot
+            send_main(call, f"⚔️ Данж пройден! Золото: **+{loot}**, урон: {dmg} (HP: {max(0, p['hp'])}/{p['max_hp']})")
+    elif data == "eat":
+        if p['hp'] >= p['max_hp']:
+            send_main(call, "⚠️ Здоровье и так полное!")
+        elif p['onigiri'] > 0:
+            p['onigiri'] -= 1
+            p['hp'] = min(p['max_hp'], p['hp'] + 40)
+            send_main(call, f"🍙 Съеден Онигири (+40 HP). HP: {p['hp']}/{p['max_hp']}.")
+        else:
+            send_main(call, "❌ Нет Онигири!")
 
-while True:
-    try:
-        r = requests.get(BASE_URL + "getUpdates", params={"timeout": 30, "offset": offset}).json()
-        if r.get("result"):
-            for u in r["result"]:
-                offset = u["update_id"] + 1
-                
-                if "message" in u and "text" in u["message"]:
-                    msg = u["message"]
-                    cid = msg["chat"]["id"]
-                    txt = msg["text"].lower().strip()
-                    uid = msg["from"]["id"]
-                    name = msg["from"].get("first_name", "Игрок")
-                    p = get_p(uid, name)
-
-                    if "@" in txt:
-                        txt = txt.split("@")[0]
-
-                    if txt in ["/start", "старт"]:
-                        send_response(cid, "Добро пожаловать в Хардкорную RPG! Кнопок нет. Команды: /farm, /mine, /dungeon, /profile, /top, /shop, /eat", name)
-                    
-                    elif txt in ["/help", "/помощь", "помощь"]:
-                        send_response(cid, 
-                            "📜 **Справочник команд:**\n\n"
-                            "🌾 `/farm` — Фарм золота (раз в минуту).\n"
-                            "⛏ `/mine` — Опасная шахта (наносит урон по HP, дает много золота).\n"
-                            "⚔️ `/dungeon` — Рейд на монстров.\n"
-                            "🏆 `/top` — Топ игроков.\n"
-                            "🛒 `/shop` — Магазин с высокими ценами.\n"
-                            "🍙 `/eat` — Восстановить HP за счет онигири.\n"
-                            "👤 `/profile` — Твоя статистика.", name
-                        )
-                    
-                    elif txt in ["/profile", "профиль"]:
-                        send_response(cid, f"Твоя статистика:\n⭐ Уровень: {p['lvl']} (XP: {p['xp']}/{p['lvl'] * 100})\n❤️ Здоровье: {p['hp']}/{p['max_hp']}\n⚔️ Оружие: {p['weapon']}\n🛡 Броня: {p['armor']}\n💰 Золото: {p['gold']}\n🍙 Онигири: {p['onigiri']}", name)
-                    
-                    elif txt in ["/top", "топ"]:
-                        if not players:
-                            send_response(cid, "🏆 Список лидеров пуст!", name)
-                        else:
-                            sorted_players = sorted(players.values(), key=lambda x: x['gold'], reverse=True)
-                            top_text = "🏆 **Таблица лидеров:**\n\n"
-                            for i, pl in enumerate(sorted_players[:5], 1):
-                                top_text += f"{i}. **{pl['name']}** — 💰 {pl['gold']} (Ур. {pl['lvl']})\n"
-                            send_response(cid, top_text, name)
-                    
-                    elif txt in ["/shop", "магазин"]:
-                        send_response(cid, 
-                            "🛒 **Хардкорный магазин:**\n"
-                            "• `/buy onigiri` — Онигири (500 монет)\n"
-                            "• `/buy potion` — Зелье здоровья (3000 монет)\n"
-                            "• `/buy sword` — Стальной меч (6000 монет)\n"
-                            "• `/buy armor` — Тяжелая броня (12000 монет)", name
-                        )
-                    
-                    elif txt in ["/farm", "фарм"]:
-                        current_time = time.time()
-                        if uid in last_farm_time and current_time - last_farm_time[uid] < 60:
-                            left = int(60 - (current_time - last_farm_time[uid]))
-                            send_response(cid, f"⏳ Рано! Отдохни еще {left} сек.", name)
-                        else:
-                            last_farm_time[uid] = current_time
-                            g = random.randint(10, 20)
-                            p['gold'] += g
-                            send_response(cid, f"🌾 Фарм на полях. Получено: **+{g}** золота. Всего: {p['gold']}", name)
-
-                    elif txt in ["/mine", "шахта"]:
-                        current_time = time.time()
-                        if uid in last_mine_time and current_time - last_mine_time[uid] < 90:
-                            left = int(90 - (current_time - last_mine_time[uid]))
-                            send_response(cid, f"⏳ Шахта нестабильна, подожди еще {left} сек.", name)
-                        else:
-                            last_mine_time[uid] = current_time
-                            damage = random.randint(25, 50) # Опасный урон по здоровью
-                            p['hp'] -= damage
-                            if random.random() < 0.35:
-                                gold = random.randint(250, 600)
-                                p['gold'] += gold
-                                send_response(cid, f"⛏ Опасная шахта! Обвал нанес тебе **{damage} урона**, но ты сорвал куш и нашел золото: **+{gold}**! (HP: {max(0, p['hp'])}/{p['max_hp']})", name)
-                            else:
-                                send_response(cid, f"💥 Страшный обвал! Ты получил **{damage} урона** и сбежал из шахты ни с чем. (HP: {max(0, p['hp'])}/{p['max_hp']})", name)
-
-                    elif txt in ["/dungeon", "данж"]:
-                        if p['hp'] <= 50:
-                            send_response(cid, "⚠️ Слишком опасно! Твое HP <= 50, сначала подлечись.", name)
-                        else:
-                            dmg = random.randint(35, 60)
-                            loot = random.randint(200, 450)
-                            p['hp'] -= dmg
-                            p['gold'] += loot
-                            send_response(cid, f"⚔️ Данж зачищен!\n💰 Найдено: **+{loot}** золота\n🩸 Урон: {dmg} (Осталось HP: {max(0, p['hp'])}/{p['max_hp']})", name)
-
-                    elif txt in ["/eat", "поесть"]:
-                        if p['hp'] >= p['max_hp']:
-                            send_response(cid, "⚠️ Здоровье и так полное!", name)
-                        elif p['onigiri'] > 0:
-                            p['onigiri'] -= 1
-                            p['hp'] = min(p['max_hp'], p['hp'] + 40)
-                            send_response(cid, f"🍙 Ты съел Онигири (+40 HP). Здоровье: {p['hp']}/{p['max_hp']}.", name)
-                        else:
-                            send_response(cid, "❌ У тебя нет еды (Онигири)!", name)
-                    
-                    elif txt == "/buy onigiri":
-                        if p['gold'] >= 500:
-                            p['gold'] -= 500
-                            p['onigiri'] += 1
-                            send_response(cid, "✅ Куплен 1 Онигири за 500 монет.", name)
-                        else:
-                            send_response(cid, "❌ Нужно 500 монет!", name)
-                    
-                    elif txt == "/buy potion":
-                        if p['gold'] >= 3000:
-                            p['gold'] -= 3000
-                            p['hp'] = p['max_hp']
-                            send_response(cid, "✅ Зелье за 3000 монет выпито! HP полностью восстановлено.", name)
-                        else:
-                            send_response(cid, "❌ Зелье стоит 3000 монет! Не хватает.", name)
-                    
-                    elif txt == "/buy sword":
-                        if p['gold'] >= 6000:
-                            p['gold'] -= 6000
-                            p['weapon'] = "Стальной меч"
-                            send_response(cid, "✅ Куплен Стальной меч за 6000 монет!", name)
-                        else:
-                            send_response(cid, "❌ Меч стоит 6000 монет! Не хватает.", name)
-                    
-                    elif txt == "/buy armor":
-                        if p['gold'] >= 12000:
-                            p['gold'] -= 12000
-                            p['armor'] = "Тяжелая броня"
-                            p['max_hp'] += 100
-                            p['hp'] += 100
-                            send_response(cid, "✅ Куплена Тяжелая броня за 12000 монет (+100 макс. HP)!", name)
-                        else:
-                            send_response(cid, "❌ Броня стоит 12000 монет! Не хватает.", name)
-
-    except Exception as e:
-        print("Ошибка:", e)
-        time.sleep(2)
+print("Бот запущен через pyTelegramBotAPI...")
+bot.infinity_polling(timeout=60, long_polling_timeout=60)
